@@ -14,6 +14,7 @@
 
     <modules>
         <module>common</module>
+        <module>storage</module>
     </modules>
 
     <properties>
@@ -35,6 +36,11 @@
             <dependency>
                 <groupId>dev.raftkv</groupId>
                 <artifactId>common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.raftkv</groupId>
+                <artifactId>storage</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
