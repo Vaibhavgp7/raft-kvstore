@@ -1,0 +1,15 @@
+# Build output
+target/
+*.class
+*.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+Thums.db
+.DS_Store
