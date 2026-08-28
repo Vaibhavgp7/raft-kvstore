@@ -31,7 +31,7 @@ public final class Wal implements Closeable {
         out.close();
     }
 
-    public void append(WalEntry entry) throws IOException {
+    public void append(Entry entry) throws IOException {
         byte[] payload = encode(entry);
         out.writeInt(payload.length);
         out.writeInt(checksum(payload));
@@ -59,12 +59,12 @@ public final class Wal implements Closeable {
         return Files.exists(path)? Files.size(path) : 0;
     }
 
-    public static List<WalEntry> readAll(Path path) throws IOException {
-        List<WalEntry> entries = new ArrayList<>();
+    public static List<Entry> readAll(Path path) throws IOException {
+        List<Entry> entries = new ArrayList<>();
         if(!Files.exists(path)) {return entries;}
         try(DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
             while(true){
-                WalEntry entry = readOne(in);
+                Entry entry = readOne(in);
                 if(entry == null) break;
                 entries.add(entry);
             }
@@ -72,7 +72,7 @@ public final class Wal implements Closeable {
         return entries;
     }
 
-    public static WalEntry readOne(DataInputStream in) throws IOException {
+    public static Entry readOne(DataInputStream in) throws IOException {
         int length;
         try {
             length = in.readInt();
@@ -102,7 +102,7 @@ public final class Wal implements Closeable {
     // -----------------------------encoding---------------
     private static final int MAX_RECORD_BYTES = 64*1024*1024;
 
-    private static byte[] encode(WalEntry entry) throws IOException {
+    private static byte[] encode(Entry entry) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         DataOutputStream data = new DataOutputStream(buffer);
 
@@ -115,11 +115,11 @@ public final class Wal implements Closeable {
         return buffer.toByteArray();
     }
 
-    private static WalEntry decode(byte[] payload) throws IOException {
+    private static Entry decode(byte[] payload) throws IOException {
         DataInputStream data = new DataInputStream(new ByteArrayInputStream(payload));
         boolean deleted = data.readBoolean();
         Bytes key = readBytes(data);
-        return deleted ? WalEntry.delete(key) : WalEntry.put(key, readBytes(data));
+        return deleted ? Entry.delete(key) : Entry.put(key, readBytes(data));
     }
 
     private static void writeBytes(DataOutputStream data, Bytes value) throws IOException {

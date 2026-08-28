@@ -6,11 +6,9 @@ import dev.raftkv.common.Bytes;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.WatchService;
 import java.util.List;
 import java.io.IOException;
 
-import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class WalTest {
@@ -24,10 +22,10 @@ public class WalTest {
     @Test
     void writesAndReadBackOneEntry() throws IOException {
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("user:42"), Bytes.of("Vaibhav")));
+            wal.append(Entry.put(Bytes.of("user:42"), Bytes.of("Vaibhav")));
         }
 
-        List<WalEntry> entries = Wal.readAll(logFile());
+        List<Entry> entries = Wal.readAll(logFile());
 
         assertThat(entries).hasSize(1);
         assertThat(entries.getFirst().key()).isEqualTo(Bytes.of("user:42"));
@@ -37,11 +35,11 @@ public class WalTest {
 
     void entryOrder() throws IOException {
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
-            wal.append(WalEntry.put(Bytes.of("Swordsman"), Bytes.of("Zoro")));
-            wal.append(WalEntry.put(Bytes.of("Cook"), Bytes.of("Sanji")));
+            wal.append(Entry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
+            wal.append(Entry.put(Bytes.of("Swordsman"), Bytes.of("Zoro")));
+            wal.append(Entry.put(Bytes.of("Cook"), Bytes.of("Sanji")));
 
-            List<WalEntry> entries = Wal.readAll(logFile());
+            List<Entry> entries = Wal.readAll(logFile());
 
             assertThat(entries).hasSize(3);
             assertThat(entries.getFirst().value()).isEqualTo(Bytes.of("Luffy"));
@@ -53,11 +51,11 @@ public class WalTest {
     @Test
     void recordsDeletesAsTombstone() throws IOException {
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
-            wal.append(WalEntry.delete(Bytes.of("Captain")));
+            wal.append(Entry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
+            wal.append(Entry.delete(Bytes.of("Captain")));
         }
 
-        List<WalEntry> entries = Wal.readAll(logFile());
+        List<Entry> entries = Wal.readAll(logFile());
 
         assertThat(entries).hasSize(2);
         assertThat(entries.get(1).deleted()).isTrue();
@@ -68,10 +66,10 @@ public class WalTest {
     @Test
     void appendToExistingFile() throws IOException {
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
+            wal.append(Entry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
         }
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("Swordsman"), Bytes.of("Zoro")));
+            wal.append(Entry.put(Bytes.of("Swordsman"), Bytes.of("Zoro")));
         }
 
         assertThat(Wal.readAll(logFile())).hasSize(2);
@@ -85,13 +83,13 @@ public class WalTest {
     @Test
     void recoversBeforeCutShort() throws IOException {
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
-            wal.append(WalEntry.put(Bytes.of("Swordsman"), Bytes.of("Zoro")));
-            wal.append(WalEntry.put(Bytes.of("Cook"), Bytes.of("Sanji")));
+            wal.append(Entry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
+            wal.append(Entry.put(Bytes.of("Swordsman"), Bytes.of("Zoro")));
+            wal.append(Entry.put(Bytes.of("Cook"), Bytes.of("Sanji")));
 
             byte[] full = Files.readAllBytes(logFile());
             Files.write(logFile(), java.util.Arrays.copyOf(full, full.length-5));
-            List<WalEntry> entries = Wal.readAll(logFile());
+            List<Entry> entries = Wal.readAll(logFile());
 
             assertThat(entries).hasSize(2);
             assertThat(entries.getFirst().key()).isEqualTo(Bytes.of("Captain"));
@@ -103,7 +101,7 @@ public class WalTest {
     @Test
     void clearsLog() throws IOException {
         try (Wal wal = new Wal(logFile())) {
-            wal.append(WalEntry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
+            wal.append(Entry.put(Bytes.of("Captain"), Bytes.of("Luffy")));
             wal.clear();
         }
         assertThat(Wal.readAll(logFile())).isEmpty();
