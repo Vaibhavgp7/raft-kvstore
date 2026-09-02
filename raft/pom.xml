@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>dev.raftkv</groupId>
+        <artifactId>raft-kvstore</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>raft</artifactId>
+
+    <description>
+        The Raft consensus core: leader election, log replication and the safety rules that make three
+        machines agree on one ordered list of commands.
+
+        Note what this module does not depend on: storage. Raft's job is to agree on a list of opaque
+        byte arrays. It does not know that those bytes happen to describe key-value operations, and it
+        must never find out - otherwise consensus and storage can only be tested together, which is
+        the mistake that makes Raft implementations untestable.
+
+        The node itself is a pure state machine: no threads, no sockets, no reads of the system clock.
+        Time arrives as a method argument and side effects leave as returned values, sos a whole cluster
+        can be drive by a fake clock inside a single-threaded test.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>dev.raftkv</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+    </dependencies>
+    <properties>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>
