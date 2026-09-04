@@ -1,4 +1,4 @@
-package dev.raftkv;
+package dev.raftkv.raft;
 
 import java.util.List;
 
@@ -33,6 +33,9 @@ public sealed interface Message {
             long leaderCommit) implements Message{
 
         public AppendEntries{
+            /* * copyOf creates an independent, unmodifiable snapshot of list at that exact ms, so if it is in a simulator
+            * so even if AppendEntries is stuck in simulator's queue while leader edits this list, the queue list is untouched
+             * */
             entries = List.copyOf(entries);
         }
 

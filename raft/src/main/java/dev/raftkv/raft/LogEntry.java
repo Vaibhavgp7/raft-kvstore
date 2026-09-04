@@ -1,4 +1,4 @@
-package dev.raftkv;
+package dev.raftkv.raft;
 
 import dev.raftkv.common.Bytes;
 
