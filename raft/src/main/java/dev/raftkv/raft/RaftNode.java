@@ -255,7 +255,7 @@ public final class RaftNode {
 
         long candidate = indexes.get((indexes.size()-1)/2);
         // figure 8 rule that leader may think of entries committed only from its own term and not inherited ones
-        if(candidate <= commitIndex || log.termAt(candidate) != commitIndex) {
+        if(candidate <= commitIndex || log.termAt(candidate) != currentTerm) {
             return List.of();
         }
         commitIndex = candidate;
