@@ -49,6 +49,19 @@ public final class RaftNode {
         this.electionDeadline = timing.nextElectionTimeout();
     }
 
+    // Loads state back into a freshly constructed node, from what RaftStore
+    // read off disk.
+    public void restore(long term, int votedFor, List<LogEntry>entries){
+        if(currentTerm!=0 || this.votedFor!=NO_VOTE || !log.isEmpty()){
+            throw new IllegalStateException("restore must happen before the node is used");
+        }
+        this.currentTerm = term;
+        this.votedFor = votedFor;
+        for(LogEntry entry: entries){
+            log.append(entry);
+        }
+    }
+
     // ------------------------------------------------------------------ time
 
     //Tells the node what time it is
