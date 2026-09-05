@@ -328,6 +328,8 @@ class ElectionTest {
         List<Action> actions = alone.tick(200);
 
         assertThat(alone.state()).isEqualTo(RaftNode.State.LEADER);
+
+        // two persists, first is the term and the vote in startElection, then the no-op appended in becomeLeader
         assertThat(persists(actions)).isEqualTo(1);
         assertThat(sent(actions)).isEmpty();
     }

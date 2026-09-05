@@ -1,9 +1,8 @@
 package dev.raftkv.raft;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import dev.raftkv.common.Bytes;
+
+import java.util.*;
 
 public final class RaftNode {
 
@@ -34,10 +33,11 @@ public final class RaftNode {
     private long electionDeadline;
     private final Set<Integer> votesReceived = new HashSet<>();
 
-    /**
-     * @param id    this node's id
-     * @param peers every <em>other</em> node in the cluster
-     */
+    // leader state - rebuilt from scratch every time this node is elected
+    private final Map<Integer,Long>nextIndex = new HashMap<>(); // for each peer, next index to send it, guess optimistically
+    private final Map<Integer, Long> matchIndex = new HashMap<>(); // for each peer, highest index known to hold , start with zero pessimistically
+    private long heartbeatDeadline;
+
     public RaftNode(int id, List<Integer> peers, Timing timing) {
         if (peers.contains(id)) {
             throw new IllegalArgumentException("peers must not contain this node's own id: " + id);
@@ -54,12 +54,33 @@ public final class RaftNode {
     //Tells the node what time it is
     public List<Action> tick(long nowMillis) {
         if (state == State.LEADER) {
-            return List.of();   // heartbeats arrive with leader-side replication
+            if(nowMillis<heartbeatDeadline){
+                return List.of();
+            }
+            heartbeatDeadline = nowMillis + timing.heartbeatInterval();
+            return replicateToAll();
         }
         if (nowMillis < electionDeadline) {
             return List.of();
         }
         return startElection(nowMillis);
+    }
+
+    // accepts a client cmd, only a leader can do this. The entry is appended locally and shipped
+    public List<Action> propose(long nowMillis, Bytes command) {
+        if(state!=State.LEADER) {
+            return List.of();
+        }
+        log.append(new LogEntry(currentTerm, command));
+        List<Action> actions = new ArrayList<>();
+        actions.add(Action.Persist.INSTANCE);
+        actions.addAll(replicateToAll());
+
+        // sending resets heartbeat clock
+        heartbeatDeadline = nowMillis + timing.heartbeatInterval();
+
+        actions.addAll(advanceCommitIndex());
+        return actions;
     }
 
     // --------------------------------------------------------------- messages
@@ -90,7 +111,7 @@ public final class RaftNode {
             case Message.RequestVote m -> handleRequestVote(nowMillis, m, actions);
             case Message.RequestVoteReply m -> handleRequestVoteReply(nowMillis, m, actions);
             case Message.AppendEntries m -> handleAppendEntries(nowMillis, m, actions);
-            case Message.AppendEntriesReply m -> { /* leader-side, next step */ }
+            case Message.AppendEntriesReply m -> handleAppendEntriesReply(m, actions);
         }
         return actions;
     }
@@ -187,6 +208,60 @@ public final class RaftNode {
                 id, m.from(), currentTerm, true, matchIndex)));
     }
 
+    // ------------------------------ leader side of AppendEntries
+    private void handleAppendEntriesReply(Message.AppendEntriesReply m, List<Action> actions) {
+        if(state!=State.LEADER) {return;} // a late reply means this node is not leader now
+
+        if(!m.success()){
+            // the follower nextIndex is not the one, so try with reducing
+            long next = nextIndex.getOrDefault(m.from(), 1L);
+            nextIndex.put(m.from(), Math.max(1,next-1));
+            return;
+        }
+
+        long known = matchIndex.getOrDefault(m.from(), 0L);
+        // a delayed reply or duplicated can have matchIndex lower or already received, and using it would
+        // un-commit committed entries
+        if(m.matchIndex()>known){
+            matchIndex.put(m.from(), m.matchIndex());
+            nextIndex.put(m.from(), m.matchIndex()+1);
+            actions.addAll(advanceCommitIndex());
+        }
+    }
+
+    // sends peers what it is missing
+    private List<Action> replicateToAll() {
+        List<Action> actions = new ArrayList<>();
+        for(int peer: peers) {
+            actions.add(new Action.Send(buildAppendEntries(peer)));
+        }
+        return actions;
+    }
+
+    private Message.AppendEntries buildAppendEntries(int peer) {
+        long next = nextIndex.getOrDefault(peer, log.lastIndex() + 1);
+        long prevLogIndex = next -1;
+        return new Message.AppendEntries(
+                id, peer, currentTerm, prevLogIndex, log.termAt(prevLogIndex), log.entriesFrom(next), commitIndex);
+    }
+
+    private List<Action> advanceCommitIndex() {
+        List<Long> indexes = new ArrayList<>();
+        indexes.add(log.lastIndex());
+        for(int peer: peers) {
+            indexes.add(matchIndex.getOrDefault(peer, 0L));
+        }
+        indexes.sort(null);
+
+        long candidate = indexes.get((indexes.size()-1)/2);
+        // figure 8 rule that leader may think of entries committed only from its own term and not inherited ones
+        if(candidate <= commitIndex || log.termAt(candidate) != commitIndex) {
+            return List.of();
+        }
+        commitIndex = candidate;
+        return applyCommitted();
+    }
+
     // ------------------------------------------------------------ transitions
 
     private void becomeFollower(long term, long nowMillis) {
@@ -202,7 +277,23 @@ public final class RaftNode {
         state = State.LEADER;
         leaderId = id;
         votesReceived.clear();
-        return List.of();
+        //nextIndex start optimistically and matchIndex at 0
+        nextIndex.clear();
+        matchIndex.clear();
+        for(int peer: peers) {
+            nextIndex.put(peer, log.lastIndex()+1);
+            matchIndex.put(peer, 0L);
+        }
+        List<Action> actions = new ArrayList<>();
+
+        log.append(LogEntry.noop(currentTerm));
+        actions.add(Action.Persist.INSTANCE);
+
+        // assert leadership at once, so heartbeatDeadline is 0
+        heartbeatDeadline = 0;
+        actions.addAll(replicateToAll());
+        actions.addAll(applyCommitted());
+        return actions;
     }
 
     // ----------------------------------------------------------------- helpers
