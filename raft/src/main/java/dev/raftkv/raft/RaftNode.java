@@ -292,7 +292,7 @@ public final class RaftNode {
         // assert leadership at once, so heartbeatDeadline is 0
         heartbeatDeadline = 0;
         actions.addAll(replicateToAll());
-        actions.addAll(applyCommitted());
+        actions.addAll(advanceCommitIndex());
         return actions;
     }
 
