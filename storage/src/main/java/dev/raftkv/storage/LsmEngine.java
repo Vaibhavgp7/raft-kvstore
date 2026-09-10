@@ -14,10 +14,16 @@ import java.util.stream.Stream;
 
 public final class LsmEngine implements Closeable {
     public static final long DEFAULT_FLUSH_THRESHOLD_BYTES = 64L * 1024 * 1024;
+    // returned for a store that has not applied anything
+    public static final long NOTHING_APPLIED = 0;
     private static final String WAL_FILE = "wal.log";
     private static final String SSTABLE_PREFIX = "sstable-";
     private static final String SSTABLE_SUFFIX = ".sst";
 
+    // The reserver key holding the applied index
+    private static final Bytes APPLIED_INDEX_KEY = Bytes.of(new byte[]{0,'e','n','d','e','a','v','o','u','r'});
+    // Saving applied index after these many commands
+    private static final int SAVE_APPLIED_INDEX_EVERY = 64;
     private final Path directory;
     private final long flushThresholdBytes;
     private final Wal wal;
@@ -27,6 +33,8 @@ public final class LsmEngine implements Closeable {
     private MemTable memTable = new MemTable();
     private int nextSStableNumber = 1;
 
+    private long appliedIndex = NOTHING_APPLIED;
+    private long savedAppliedIndex = NOTHING_APPLIED;
     public static LsmEngine open(Path directory) throws IOException {
         return open(directory, DEFAULT_FLUSH_THRESHOLD_BYTES);
     }
@@ -44,6 +52,15 @@ public final class LsmEngine implements Closeable {
 
         this.wal = new Wal(directory.resolve(WAL_FILE));
         replayWal();
+        loadAppliedIndex();
+    }
+
+    private void loadAppliedIndex() throws IOException {
+        Bytes value = get(APPLIED_INDEX_KEY);
+        if(value== null)
+            return;
+        appliedIndex = Long.parseLong(value.asString());
+        savedAppliedIndex = appliedIndex;
     }
 
     // ---- the operations a caller uses, like put, delete , get or containsKey
@@ -82,6 +99,26 @@ public final class LsmEngine implements Closeable {
 
     public boolean containsKey(Bytes key) throws IOException {
         return get(key) != null;
+    }
+
+    //the applied index
+    public void markApplied(long index) throws  IOException {
+        if(index <= appliedIndex){
+            return;
+        }
+        appliedIndex = index;
+        if(appliedIndex - savedAppliedIndex >= SAVE_APPLIED_INDEX_EVERY){
+            saveAppliedIndex();
+        }
+    }
+
+    public long appliedIndex() {
+        return appliedIndex;
+    }
+
+    private void saveAppliedIndex() throws IOException {
+        append(Entry.put(APPLIED_INDEX_KEY, Bytes.of(Long.toString(appliedIndex))));
+        savedAppliedIndex = appliedIndex;
     }
 
     // --------flush---------
@@ -147,12 +184,21 @@ public final class LsmEngine implements Closeable {
         return memTable.size();
     }
 
+    // for test
+    public long memTableSizeInBytes() {
+        return memTable.sizeInBytes();
+    }
+
     public Path directory() {
         return directory;
     }
 
     @Override
     public void close() throws IOException{
+        // saving on the way , so nothing is replayed at restart
+        if(appliedIndex >savedAppliedIndex){
+            saveAppliedIndex();
+        }
         wal.close();
         for(SSTableReader ssTable: ssTables) {
             ssTable.close();
