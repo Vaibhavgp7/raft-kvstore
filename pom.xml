@@ -16,6 +16,7 @@
         <module>common</module>
         <module>storage</module>
         <module>raft</module>
+        <module>server</module>
     </modules>
 
     <properties>
