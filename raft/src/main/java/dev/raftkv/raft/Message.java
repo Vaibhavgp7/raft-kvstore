@@ -44,6 +44,9 @@ public sealed interface Message {
         }
     }
 
+    // matchIndex is the field , the highest index the follower now hold, which the leader records as fact
+    // and decide if majority is reached
+
     record AppendEntriesReply(
             int from,
             int to,
